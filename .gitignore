@@ -1,0 +1,8 @@
+*.npy
+*.npz
+*.jsonl
+*.safetensors
+*.key
+.env
+__pycache__/
+ckpt*/
