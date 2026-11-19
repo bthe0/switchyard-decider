@@ -8,7 +8,7 @@ BASE, MAXLEN = os.environ.get("BASE", "answerdotai/ModernBERT-large"), int(os.en
 LS, SEED = float(os.environ.get("LS", 0)), int(os.environ.get("SEED", 42))
 OUT, LOSS = os.environ.get("OUT", "ckpt"), os.environ.get("LOSS", "ce")
 LR, EP = float(os.environ.get("LR", 3e-5)), float(os.environ.get("EP", 3))
-# Routing cost of predicting column a when truth is row y: sending hard work to Go costs most.
+# Routing cost of predicting column a when truth is row y: sending hard work to the mid-tier model costs most.
 COST = torch.tensor([[0, .3, 1], [.5, 0, .5], [3, 1.5, 0]])
 NAMES = ["easy", "borderline", "hard"]
 tok = AutoTokenizer.from_pretrained(BASE)

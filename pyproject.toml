@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "switchyard-decider"
+version = "1.0.0"
+description = "Local ModernBERT classifier that scores how hard a coding-assistant request is, for LLM routing."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = ["numpy", "torch", "transformers"]
+
+[project.optional-dependencies]
+train = ["datasets", "pyarrow", "safetensors", "accelerate"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+switchyard-decider-serve = "switchyard_decider.serve:main"
+
+[project.urls]
+Homepage = "https://github.com/bthe0/switchyard-decider"
+Model = "https://huggingface.co/bthe0/switchyard-decider"
+
+[tool.setuptools]
+packages = ["switchyard_decider"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Research scripts are kept in their original compact form.
+"training/*" = ["E401", "E402", "E501", "E701", "E702", "E703", "E731", "E741", "I001"]
+"benchmarks/*" = ["E401", "E402", "E501", "E701", "E702", "E731", "E741", "I001"]

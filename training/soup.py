@@ -1,17 +1,23 @@
-import sys, json, torch, numpy as np, subprocess
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+import numpy as np
 from safetensors.torch import load_file, save_file
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+PREDICT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "switchyard_decider", "predict.py")
 va = [json.loads(l) for l in open("val.jsonl")]
 y = np.array([r["label"] for r in va])
 def score(d):
-    subprocess.run(["python", "predict.py", d, "/tmp/s.npy"], check=True)
+    subprocess.run([sys.executable, PREDICT, d, "/tmp/s.npy"], check=True)
     z = np.load("/tmp/s.npy"); e = np.exp(z - z.max(1, keepdims=True)); p = e / e.sum(1, keepdims=True); s = p[:, 0] + .5 * p[:, 1]
     a, b = s[y == 0], s[y == 2]
     return float((a[:, None] > b[None]).mean() + .5 * (a[:, None] == b[None]).mean())
 def mix(ds, out):
     sd = [load_file(f"{d}/model.safetensors") for d in ds]
     save_file({k: sum(s[k].float() for s in sd).div(len(sd)).to(sd[0][k].dtype) for k in sd[0]}, f"{out}/model.safetensors")
-import shutil
 runs = sys.argv[1:]
 solo = {d: score(d) for d in runs}
 print("SOLO", json.dumps(solo), flush=True)

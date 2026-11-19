@@ -1,6 +1,7 @@
 import json, os, sys, threading, concurrent.futures as cf
 src, m = sys.argv[1], sys.argv[2]
 sys.argv = sys.argv[:1]
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks"))
 from bench_dec import call, usage, CAP
 
 rows = [json.loads(l) for l in open(src)]

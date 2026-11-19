@@ -1,4 +1,4 @@
-import json, re, os, sys, random, time, urllib.request, concurrent.futures as cf
+import json, os, sys, random, time, urllib.request, concurrent.futures as cf
 import numpy as np
 
 H = {"Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"], "Content-Type": "application/json"}

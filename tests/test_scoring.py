@@ -1,0 +1,61 @@
+import numpy as np
+
+from switchyard_decider.serve import TASK_CHARS, hardness, p_solve, request_text
+
+rng = np.random.default_rng(0)
+VAL = rng.normal(size=(500, 7)).astype(np.float32)
+
+
+def make_calib(z, out=None):
+    e = np.exp(z - z.max(1, keepdims=True))
+    pa, pj = e[:, :3] / e[:, :3].sum(1, keepdims=True), e[:, 3:6] / e[:, 3:6].sum(1, keepdims=True)
+    pr = (pa + pj) / 2
+    aj, g = np.sort(pr[:, 2]), np.sort(-z[:, 6])
+    h = (np.searchsorted(aj, pr[:, 2]) + np.searchsorted(g, -z[:, 6])) / 2 / len(aj)
+    return {"aj": aj, "g": g, "h": np.sort(h), "out": np.linspace(0, 1, len(h)) if out is None else np.sort(out)}
+
+
+CALIB = make_calib(VAL)
+
+
+def logits(hard, gold):
+    return np.array([0, 0, hard, 0, 0, hard, gold], dtype=np.float32)
+
+
+def test_hardness_monotonic_in_hard_heads():
+    hs = [hardness(logits(x, 0.0), CALIB) for x in np.linspace(-4, 4, 9)]
+    assert all(a <= b for a, b in zip(hs, hs[1:])) and hs[0] < hs[-1]
+
+
+def test_hardness_decreases_with_gold_logit():
+    hs = [hardness(logits(0.0, x), CALIB) for x in np.linspace(-4, 4, 9)]
+    assert all(a >= b for a, b in zip(hs, hs[1:])) and hs[0] > hs[-1]
+
+
+def test_hardness_range():
+    assert hardness(logits(-50, 50), CALIB) == 0.0
+    assert hardness(logits(50, -50), CALIB) == 1.0
+
+
+def test_p_solve_range_and_monotonic():
+    ps = [p_solve(h, CALIB) for h in np.linspace(0, 1, 21)]
+    assert all(0.0 <= p <= 1.0 for p in ps)
+    assert all(a >= b for a, b in zip(ps, ps[1:])) and ps[0] > ps[-1]
+
+
+def test_p_solve_follows_target_distribution():
+    calib = make_calib(VAL, out=rng.uniform(0.2, 0.6, size=500))
+    ps = [p_solve(h, calib) for h in np.linspace(0, 1, 21)]
+    assert min(ps) >= calib["out"].min() and max(ps) <= calib["out"].max()
+
+
+def test_request_text():
+    assert request_text({"opening_task": "fix bug", "latest_follow_up": "also tests"}) == "fix bug\n\nalso tests"
+    assert request_text({"opening_task": "fix bug"}) == "fix bug"
+    assert request_text({"latest_follow_up": "more"}) == "more"
+    assert request_text({}) == ""
+
+
+def test_request_text_truncates_opening_task_only():
+    t = request_text({"opening_task": "a" * 5000, "latest_follow_up": "b" * 5000})
+    assert t == "a" * TASK_CHARS + "\n\n" + "b" * 5000

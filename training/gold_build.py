@@ -60,7 +60,7 @@ for n,i,t in sw:
     t=t.strip()
     if ok(t) and key(t) not in ex and key(t) not in seen:
         seen.add(key(t)); c.append({"id":f"{n}:{i}","source":n,"license":lic[n],"text":t})
-random.Random(0).shuffle(c); 
+random.Random(0).shuffle(c)
 for x in c[6000:]: seen.discard(key(x["text"]))
 out.extend(c[:6000]); print("swe",len(c),file=sys.stderr)
 add("wildchat","ODC-BY-1.0",wild(),20000,cq=11000)
