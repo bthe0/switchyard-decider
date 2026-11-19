@@ -6,7 +6,8 @@ Validation set: 1,994 held-out prompts (easy vs hard pairs; medium excluded from
 
 | model | AUC (labels) | AUC (arena) | AUC (coding) | hard → frontier @40% | easy → mid-tier @40% |
 |---|---|---|---|---|---|
-| **this model (step 3600)** | **0.886** | **0.769** | **0.929** | **0.693** | **0.862** |
+| **+ ridge probe on embedding (v1.1, served)** | **0.895** | | | | |
+| this model (step 3600, head only, v1.0) | 0.886 | 0.769 | 0.929 | 0.693 | 0.862 |
 | same recipe without gold head | 0.859 | | | | |
 | previous LLM decider (0.8B, MLX 4-bit) | 0.687 | | | 0.538 | 0.712 |
 
@@ -35,7 +36,20 @@ Reproduce with `benchmarks/bench_dec.py [model...]` (needs `OPENROUTER_API_KEY`;
 
 ## Speed
 
-<!-- SPEED -->
+Apple M4 Max (48 GB), PyTorch, single request, batch 1. Forward pass only at fixed lengths; "real prompts" includes
+tokenization on the 1,994 validation prompts (median 80 tokens). The ridge probe adds one 2048-wide dot product.
+
+| tokens | MPS fp16 p50 | MPS fp16 p95 | CPU fp32 p50 | CPU fp32 p95 |
+|---|---|---|---|---|
+| 32 | 11.4 ms | 11.7 ms | 49.4 ms | 55.3 ms |
+| 128 | 17.7 ms | 18.1 ms | 125.1 ms | 141.7 ms |
+| 256 | 27.6 ms | 29.3 ms | 150.3 ms | 161.1 ms |
+| 512 | 107.8 ms | 320.3 ms | 294.1 ms | 317.5 ms |
+| 768 | 145.4 ms | 161.6 ms | 473.3 ms | 522.6 ms |
+| real prompts | 30.2 ms (p99 151 ms) | 107.5 ms | 78.7 ms (p99 320 ms, 200 prompts) | 219.0 ms |
+
+Through the HTTP server on MPS (500 prompts): p50 23 ms, p95 74 ms, p99 97 ms. Model load 0.7 s, resident memory
+about 560 MB. The previous LLM decider took about 720 ms per decision.
 
 Reproduce with `python benchmarks/bench_speed.py <model_dir> <mps|cuda|cpu> [prompts.jsonl]`, which reports forward
 latency at fixed token lengths and, if a prompts file is given, end-to-end latency on real prompts.

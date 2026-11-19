@@ -59,3 +59,12 @@ def test_request_text():
 def test_request_text_truncates_opening_task_only():
     t = request_text({"opening_task": "a" * 5000, "latest_follow_up": "b" * 5000})
     assert t == "a" * TASK_CHARS + "\n\n" + "b" * 5000
+
+
+def test_ridge_probe_blend():
+    rs = np.linspace(-1, 1, 101).astype(np.float32)
+    calib = dict(CALIB, ra=np.ones(4, np.float32), rb=np.float32(0), rs=rs, rw=np.float32(4))
+    lg = logits(0.0, 0.0)
+    assert hardness(lg, calib) == hardness(lg, CALIB)
+    hs = [hardness(lg, calib, np.full(4, x / 4, np.float32)) for x in np.linspace(-1.5, 1.5, 7)]
+    assert all(a <= b for a, b in zip(hs, hs[1:])) and 0.0 <= hs[0] < hs[-1] <= 1.0

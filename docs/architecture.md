@@ -5,7 +5,7 @@
 A local LLM router sends each coding-assistant request either to a cheaper mid-tier model or to a frontier model.
 The decision was previously made by a small LLM (0.8B, MLX 4-bit), which took about 700 ms per request and ranked
 requests poorly (AUC 0.687). switchyard-decider replaces it with an encoder classifier that answers in about 25 ms
-(p50, Apple-silicon MPS) and ranks requests much better (AUC 0.886).
+(p50, Apple-silicon MPS) and ranks requests much better (AUC 0.895 with the v1.1 ridge probe).
 
 ## Model
 

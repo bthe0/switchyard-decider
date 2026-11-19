@@ -18,12 +18,17 @@ def softmax(x):
     return e / e.sum()
 
 
-def hardness(logits, calib):
+def hardness(logits, calib, emb=None):
     # Mean of two validation percentiles: P(hard) over arena+judge heads, and the negated gold logit (higher = easier).
+    # With a ridge probe in calib (ra, rb, rs, rw), its CLS+mean embedding percentile is blended in with weight rw.
     lg = np.asarray(logits, dtype=np.float32)
     pr = (softmax(lg[:3]) + softmax(lg[3:6])) / 2
     aj, g = np.searchsorted(calib["aj"], pr[2].item()), np.searchsorted(calib["g"], -lg[6].item())
-    return (aj + g) / 2 / len(calib["aj"])
+    h = (aj + g) / 2 / len(calib["aj"])
+    if emb is None or "ra" not in calib:
+        return h
+    q = np.searchsorted(calib["rs"], np.asarray(emb, dtype=np.float32) @ calib["ra"] + calib["rb"]) / len(calib["rs"])
+    return float((h + calib["rw"] * q) / (1 + calib["rw"]))
 
 
 def p_solve(h, calib):
@@ -55,14 +60,18 @@ def load_scorer(model_dir, dev=None):
     tok = AutoTokenizer.from_pretrained(model_dir)
     dtype = torch.float16 if dev != "cpu" else torch.float32
     m = AutoModelForSequenceClassification.from_pretrained(model_dir, dtype=dtype).to(dev).eval()
-    calib = np.load(f"{model_dir}/calib.npz")
+    calib = dict(np.load(f"{model_dir}/calib.npz"))
     lock = threading.Lock()
+    hid = {}
+    m.model.register_forward_hook(lambda mod, i, o: hid.__setitem__("h", o[0]))
 
     def score(text):
         with lock, torch.no_grad():
             x = tok(text, truncation=True, max_length=MAX_LEN, return_tensors="pt").to(dev)
             lg = m(**x).logits[0].float().cpu()
-        return p_solve(hardness(lg.numpy(), calib), calib)
+            h = hid["h"][0].float()
+            emb = torch.cat([h[0], h.mean(0)]).cpu().numpy()
+        return p_solve(hardness(lg.numpy(), calib, emb), calib)
 
     return score, dev
 

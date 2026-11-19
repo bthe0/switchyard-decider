@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "switchyard-decider"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local ModernBERT classifier that scores how hard a coding-assistant request is, for LLM routing."
 readme = "README.md"
 license = "Apache-2.0"

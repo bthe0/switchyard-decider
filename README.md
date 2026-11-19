@@ -19,10 +19,10 @@ Weights are not stored in git. Download them from either source:
   hf download bthe0/switchyard-decider --local-dir switchyard-decider
   ```
 
-- GitHub release v1.0: https://github.com/bthe0/switchyard-decider/releases/tag/v1.0
+- GitHub release v1.0: https://github.com/bthe0/switchyard-decider/releases/tag/v1.1
 
   ```sh
-  gh release download v1.0 -R bthe0/switchyard-decider -D switchyard-decider
+  gh release download v1.1 -R bthe0/switchyard-decider -D switchyard-decider
   ```
 
 Assets: `model.safetensors` (about 792 MB, fp16), `config.json`, `tokenizer.json`, `tokenizer_config.json`,
@@ -34,7 +34,8 @@ Validation set: 1,994 held-out prompts (easy vs hard pairs; medium excluded from
 
 | model | AUC (labels) | AUC (arena) | AUC (coding) | hard → frontier @40% | easy → mid-tier @40% |
 |---|---|---|---|---|---|
-| **this model (step 3600)** | **0.886** | **0.769** | **0.929** | **0.693** | **0.862** |
+| **+ ridge probe on embedding (v1.1, served)** | **0.895** | | | | |
+| this model (step 3600, head only, v1.0) | 0.886 | 0.769 | 0.929 | 0.693 | 0.862 |
 | previous LLM decider (0.8B, MLX 4-bit) | 0.687 | | | 0.538 | 0.712 |
 
 The checkpoint was chosen on this validation set, so these numbers are slightly optimistic. Full tables, the

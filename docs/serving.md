@@ -20,10 +20,10 @@ Download the weights from Hugging Face (primary) or the GitHub release:
   hf download bthe0/switchyard-decider --local-dir switchyard-decider
   ```
 
-- https://github.com/bthe0/switchyard-decider/releases/tag/v1.0
+- https://github.com/bthe0/switchyard-decider/releases/tag/v1.1
 
   ```sh
-  gh release download v1.0 -R bthe0/switchyard-decider -D switchyard-decider
+  gh release download v1.1 -R bthe0/switchyard-decider -D switchyard-decider
   ```
 
 The directory must contain `model.safetensors` (about 792 MB, fp16), `config.json`, `tokenizer.json`,
