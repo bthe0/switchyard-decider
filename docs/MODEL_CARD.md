@@ -17,11 +17,15 @@ tags:
 ## Summary
 
 switchyard-decider is `answerdotai/ModernBERT-large` fine-tuned to score how hard a coding-assistant request is. A
-local LLM router uses the score to send a request either to a cheaper mid-tier model or to a frontier model. It
-answers in about 25 ms (p50, Apple-silicon MPS) and reaches AUC 0.895 on held-out easy vs hard prompts.
+local LLM router uses the score to send a request either to a cheaper mid-tier model or to a frontier model. v1.2
+reaches AUC 0.9794 on a frozen 200-row holdout built to catch length shortcuts (v1.1: 0.8396) and 0.8966 on the
+validation set val2 (v1.1: 0.8952), at 62.8 ms p50 end to end on Apple M4 Max MPS.
+
+v1.2 needs the head+tail input cut from the v1.2 code (`switchyard_decider/serve.py`, package version 1.2.0). Do not
+serve these weights with the v1.1 server, which keeps only the first 768 tokens.
 
 - Weights: https://huggingface.co/bthe0/switchyard-decider (primary) and the GitHub release
-  https://github.com/bthe0/switchyard-decider/releases/tag/v1.1
+  https://github.com/bthe0/switchyard-decider/releases/tag/v1.2
 - Code: https://github.com/bthe0/switchyard-decider
 
 Files: `model.safetensors` (about 792 MB, fp16), `config.json`, `tokenizer.json`, `tokenizer_config.json`,
@@ -30,7 +34,7 @@ Files: `model.safetensors` (about 792 MB, fp16), `config.json`, `tokenizer.json`
 ```sh
 hf download bthe0/switchyard-decider --local-dir switchyard-decider
 # or
-gh release download v1.1 -R bthe0/switchyard-decider -D switchyard-decider
+gh release download v1.2 -R bthe0/switchyard-decider -D switchyard-decider
 ```
 
 ## Intended use
@@ -54,10 +58,17 @@ model = AutoModelForSequenceClassification.from_pretrained(d, dtype=torch.float3
 calib = np.load(f"{d}/calib.npz")
 
 text = "Rename the variable foo to bar in utils.py"
+ids = tok(text[:20000])["input_ids"]
+if len(ids) > 768:  # head+tail: keep the first 384 and last 384 tokens
+    ids = ids[:384] + ids[-384:]
 with torch.no_grad():
-    lg = model(**tok(text, truncation=True, max_length=768, return_tensors="pt")).logits[0].float()
+    out = model(input_ids=torch.tensor([ids]), output_hidden_states=True)
+lg, hid = out.logits[0].float(), out.hidden_states[-1][0].float()
 pr = (lg[:3].softmax(-1) + lg[3:6].softmax(-1)) / 2
-hardness = (np.searchsorted(calib["aj"], pr[2].item()) + np.searchsorted(calib["g"], -lg[6].item())) / 2 / len(calib["aj"])
+h = (np.searchsorted(calib["aj"], pr[2].item()) + np.searchsorted(calib["g"], -lg[6].item())) / 2 / len(calib["aj"])
+emb = torch.cat([hid[0], hid.mean(0)]).numpy()  # CLS + mean of the final hidden states
+r = np.searchsorted(calib["rs"], emb @ calib["ra"] + calib["rb"]) / len(calib["rs"])
+hardness = (h + calib["rw"] * r) / (1 + calib["rw"])
 q = np.searchsorted(calib["h"], hardness) / len(calib["h"])
 p_solve = float(np.quantile(calib["out"], 1 - q))  # probability the mid-tier model can handle it
 ```
@@ -83,8 +94,9 @@ Seven logits:
 | 6 | gold score from decision-model teachers; higher means easier |
 
 The hardness score is the mean of two validation-set percentiles: P(hard) averaged over the arena and judge heads, and
-the negated gold logit. `calib.npz` (keys `aj`, `g`, `h`, `out`) holds the reference arrays and maps hardness onto a
-target output distribution so that a router's existing cutoffs keep routing the same share of traffic.
+the negated gold logit. That is rank-blended with a ridge probe on the CLS+mean embedding (`ra`, `rb`, `rs`, weight
+`rw`). `calib.npz` holds these reference arrays (`aj`, `g`, `h`, `out`, `ra`, `rb`, `rs`, `rw`) and maps hardness
+onto a target output distribution so that a router's existing cutoffs keep routing the same share of traffic.
 
 ## Training data
 
@@ -94,10 +106,44 @@ SWE-bench (MIT), SWE-Gym (MIT) and SWE-rebench (CC-BY-4.0). Labels came from are
 (Anthropic Claude Haiku, OpenAI GPT-6-luna decisions) and OpenRouter decision models (`nace-ai/drex-max`,
 `perplexity/pplx-decider`).
 
-Training: lr 3e-5, max length 768, bf16, single NVIDIA RTX 5070 Ti, best checkpoint at step 3,600, followed by a
-greedy weight soup.
+Training (v1.0): lr 3e-5, max length 768, bf16, single NVIDIA RTX 5070 Ti, best checkpoint at step 3,600, followed by
+a greedy weight soup. v1.1 added the ridge probe.
+
+v1.2 retune, from the v1.1 weights: 1 epoch at lr 1e-5 on 20k replay rows of the original training set plus 4,653
+label-preserving augmentation rows. The augmentation covers easy asks wrapped in long logs, JSON or code pastes; terse
+hard questions; and matched pairs that put an easy ask and a hard ask after the same paste. Inputs over 768 tokens
+keep the first 384 and last 384 tokens. The ridge probe was refit with no augmentation weight. Training took about
+45 minutes on one RTX 5070 Ti (about $0.25 rented).
+
+The selection rule was fixed before any holdout metric was computed: take the highest dev-aug AUC among runs with
+val2 AUC ≥ 0.8902. Candidates scored (val2 / dev-aug): r5 0.8936 / 0.9463, r10 0.8968 / 0.9483, r20 0.8987 / 0.9505,
+r10ht 0.8966 / 0.9576 (chosen). Probe refits that weighted the augmentation rows failed the val2 gate.
 
 ## Evaluation
+
+### v1.2 against v1.1
+
+The holdout is 200 frozen rows: 35 each of short_easy, short_hard, long_easy and long_hard, 20 matched pairs (same
+paste, one easy ask and one hard ask), and 20 borderline rows. Its sha256 is
+`967dc16e4d61e90ed14a1f4c048a14be285264f8193a1b14b211a87ed6c61357`. It was never used for training or tuning. It has
+0 exact matches and 0 near-duplicates (8-gram overlap ≥ 50%) against the training, augmentation, dev-aug and fresh100
+sets. Length alone scores AUC 0.5065 on it, so length does not separate its classes.
+
+| metric | v1.1 | v1.2 |
+|---|---|---|
+| holdout hard-vs-easy AUC | 0.8396 | **0.9794** |
+| matched pairs ordered correctly | 13/20 | 19/20 |
+| long_easy on the wrong side of the cutoff | 30/35 | 13/35 |
+| pair_easy on the wrong side | 16/20 | 8/20 |
+| short_hard on the wrong side | 2/35 | 0/35 |
+| short_easy, long_hard on the wrong side (controls) | 0 | 0 |
+| val2 AUC | 0.8952 | 0.8966 |
+| fresh100 AUC | 0.9908 | 0.9956 |
+| dev-aug AUC | 0.7312 | 0.9576 |
+
+Holdout AUC difference +0.1398. Paired bootstrap with 2,000 resamples gives a 95% lower bound of +0.0906.
+
+### Validation history (v1.0, v1.1)
 
 Validation set: 1,994 held-out prompts (easy vs hard pairs; medium excluded from AUC).
 
@@ -116,7 +162,19 @@ The checkpoint was chosen on this validation set, so these numbers are slightly 
 
 ## Speed
 
-Apple M4 Max (48 GB), PyTorch, single request, batch 1. Forward pass only at fixed lengths; "real prompts" includes
+v1.2 measurement: served path end to end (20,000-character cut, tokenization, head+tail, forward pass, ridge probe),
+batch 1, fp16, Apple M4 Max MPS, on the 200 holdout texts. Most of these texts are long. Same harness for both models:
+
+| model | p50 | p90 |
+|---|---|---|
+| v1.1 | 64.0 ms | |
+| v1.2 | 62.8 ms | 64.9 ms |
+
+The earlier figures below come from a forward-pass harness on mostly short validation prompts (median 80 tokens).
+They are not comparable with the table above, which includes tokenization of long inputs. Neither model meets a
+40 ms goal on long inputs; batch-1 MPS inference is bound by kernel launch overhead.
+
+Earlier measurement (v1.1): Apple M4 Max (48 GB), PyTorch, single request, batch 1. Forward pass only at fixed lengths; "real prompts" includes
 tokenization on the 1,994 validation prompts (median 80 tokens). The ridge probe adds one 2048-wide dot product.
 
 | tokens | MPS fp16 p50 | MPS fp16 p95 | CPU fp32 p50 | CPU fp32 p95 |
@@ -134,7 +192,14 @@ about 560 MB. The previous LLM decider took about 720 ms per decision.
 ## Limitations
 
 - English only; tuned on coding-assistant and chat prompts.
-- Only the first 3,000 characters of the opening task plus the latest follow-up are scored, truncated to 768 tokens.
+- The model scores the first 20,000 characters of the opening task plus the latest follow-up. Inputs over 768 tokens
+  keep only the first 384 and last 384 tokens, so text in the middle of a long paste is not seen.
+- Long pastes still bias v1.2 toward "hard": 13/35 long_easy and 8/20 pair_easy holdout rows land on the wrong side of
+  the cutoff.
+- The holdout is synthetic. Its asks were written by an LLM and assembled by deterministic generator scripts. A TF-IDF
+  classifier separates its classes at CV AUC 0.597, a borderline amount of lexical leakage.
+- dev-aug is built the same way as the training augmentation, so the dev-aug gain is optimistic.
+- The v1.2 weights need the head+tail serve path (v1.2 code). The v1.1 `serve.py` truncates to the first 768 tokens.
 - Labels are noisy teacher outputs; the model ranks difficulty, it does not verify that a model can solve a task.
 - Evaluation numbers are slightly optimistic because the checkpoint was selected on the validation set.
 

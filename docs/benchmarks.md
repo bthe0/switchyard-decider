@@ -1,6 +1,69 @@
 # Benchmarks
 
-## Accuracy
+## Holdout (v1.2)
+
+`benchmarks/holdout/holdout.jsonl` holds 200 frozen rows (sha256
+`967dc16e4d61e90ed14a1f4c048a14be285264f8193a1b14b211a87ed6c61357`). It was built to show whether a model routes on
+input length instead of on the ask:
+
+| subset | rows | content |
+|---|---|---|
+| short_easy, short_hard | 35 + 35 | short asks (controls) |
+| long_easy, long_hard | 35 + 35 | asks after long logs, JSON or code pastes |
+| pair_easy, pair_hard | 20 + 20 | matched pairs: the same paste with an easy ask and with a hard ask |
+| borderline | 20 | medium asks, excluded from AUC |
+
+The asks were written by an LLM. `benchmarks/holdout/make_holdout.py` (with `gens.py` and `cores.py`) assembles them
+deterministically and reproduces the file byte for byte. The holdout was frozen before any v1.2 metric existed. It
+was never used for training or tuning, and it was scored once, on the chosen run.
+
+Leakage checks (`training/retune/holdout_qa.py`, `leak_check.py`, `leak_bow.py`):
+
+| check | result |
+|---|---|
+| exact matches vs train3, aug_train, devaug, fresh100 | 0 |
+| near-duplicates (8-gram overlap ≥ 50%) | 0 |
+| length-only AUC | 0.5065 |
+| TF-IDF logistic regression, 5-fold CV AUC | 0.597 |
+| bag-of-words ridge trained on the augmentation rows, scored on the holdout | 0.574 / 0.582 |
+
+Results, served end to end (`training/retune/accept_final.py`):
+
+| metric | v1.1 | v1.2 |
+|---|---|---|
+| hard-vs-easy AUC | 0.8396 | **0.9794** |
+| matched pairs ordered correctly (easy scored easier) | 13/20 | 19/20 |
+| long_easy on the wrong side of the cutoff | 30/35 | 13/35 |
+| pair_easy on the wrong side | 16/20 | 8/20 |
+| short_hard on the wrong side | 2/35 | 0/35 |
+| short_easy, long_hard, pair_hard, borderline on the wrong side | 0 | 0 |
+
+AUC difference +0.1398; a paired bootstrap with 2,000 resamples gives a 95% lower bound of +0.0906.
+
+Other sets:
+
+| set | v1.1 | v1.2 | note |
+|---|---|---|---|
+| val2 AUC | 0.8952 | 0.8966 | validation split used for the gate |
+| fresh100 AUC | 0.9908 | 0.9956 | 100 recent prompts |
+| dev-aug AUC | 0.7312 | 0.9576 | built like the training augmentation, so optimistic |
+
+### Latency (v1.2 harness)
+
+`training/retune/bench_latency.py <model_dir>` times the served path end to end for each holdout text. That covers
+the 20,000-character cut, tokenization, the head+tail cut, the forward pass and the ridge probe. It runs at batch 1,
+fp16, on Apple M4 Max (48 GB) MPS.
+
+| model | p50 | p90 |
+|---|---|---|
+| v1.1 | 64.0 ms | |
+| v1.2 | 62.8 ms | 64.9 ms |
+
+Most holdout texts are long (120 of 200 exceed 768 tokens), and this harness includes their tokenization. The
+[Speed](#speed) table below uses a forward-pass harness on short validation prompts, so the two are not comparable.
+Neither model meets a 40 ms goal on long inputs, because batch-1 MPS inference is bound by kernel launch overhead.
+
+## Accuracy (validation, v1.0 and v1.1)
 
 Validation set: 1,994 held-out prompts (easy vs hard pairs; medium excluded from AUC).
 
@@ -36,7 +99,7 @@ Reproduce with `benchmarks/bench_dec.py [model...]` (needs `OPENROUTER_API_KEY`;
 
 ## Speed
 
-Apple M4 Max (48 GB), PyTorch, single request, batch 1. Forward pass only at fixed lengths; "real prompts" includes
+Measured on v1.1 (v1.2 has the same architecture and input cap of 768 tokens). Apple M4 Max (48 GB), PyTorch, single request, batch 1. Forward pass only at fixed lengths; "real prompts" includes
 tokenization on the 1,994 validation prompts (median 80 tokens). The ridge probe adds one 2048-wide dot product.
 
 | tokens | MPS fp16 p50 | MPS fp16 p95 | CPU fp32 p50 | CPU fp32 p95 |
@@ -56,6 +119,8 @@ latency at fixed token lengths and, if a prompts file is given, end-to-end laten
 
 
 ## Comparison with OpenRouter models
+
+Measured on v1.1. This comparison was not rerun for v1.2, and none of the numbers below are v1.2 numbers.
 
 Same task for every model: rank 120 validation prompts (55 easy, 65 hard, a seeded random sample of the easy/hard
 pairs) from easiest to hardest. AUC is the probability that a random easy prompt is ranked easier than a random hard
