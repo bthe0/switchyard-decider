@@ -3,6 +3,7 @@ import numpy as np, torch
 from datasets import Dataset
 from transformers import (AutoTokenizer, AutoModelForSequenceClassification, Trainer,
                           TrainingArguments, DataCollatorWithPadding)
+from switchyard_decider.serve import TASK_CHARS, head_tail
 
 BASE, MAXLEN = os.environ.get("BASE", "answerdotai/ModernBERT-large"), int(os.environ.get("MAXLEN", 768))
 LS, SEED = float(os.environ.get("LS", 0)), int(os.environ.get("SEED", 42))
@@ -13,7 +14,10 @@ COST = torch.tensor([[0, .3, 1], [.5, 0, .5], [3, 1.5, 0]])
 NAMES = ["easy", "borderline", "hard"]
 tok = AutoTokenizer.from_pretrained(BASE)
 load = lambda f: Dataset.from_list([json.loads(l) for l in open(f)])
-enc = lambda b: tok(b["text"], truncation=True, max_length=MAXLEN)
+# TRUNC=ht (v1.2 default): text[:20000], then first+last MAXLEN/2 tokens; TRUNC=head reproduces v1.0/v1.1.
+TRUNC = os.environ.get("TRUNC", "ht")
+ids_of = lambda t: tok(t, truncation=True, max_length=MAXLEN)["input_ids"] if TRUNC == "head" else head_tail(tok(t[:TASK_CHARS])["input_ids"], MAXLEN)
+enc = lambda b: {"input_ids": (x := [ids_of(t) for t in b["text"]]), "attention_mask": [[1] * len(i) for i in x]}
 cols = ["text"]
 AM, LM = {"easy": 0, "tie": 1, "hard": 2}, {"easy": 0, "medium": 1, "hard": 2}
 soft = lambda b: {"soft": [[.5 * (c == y) + .25 * (c == AM[a]) + .25 * (c == LM[l]) for c in range(3)]

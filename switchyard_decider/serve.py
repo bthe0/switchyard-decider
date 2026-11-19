@@ -6,7 +6,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 
 MAX_LEN = 768
-TASK_CHARS = 3000
+TASK_CHARS = 20000
+
+
+def head_tail(ids, max_len=MAX_LEN):
+    # Keep the first and last max_len/2 tokens so an ask after a long paste still reaches the model (v1.2 training).
+    return list(ids) if len(ids) <= max_len else list(ids[: max_len // 2]) + list(ids[-(max_len - max_len // 2):])
+
+
+def encode(tok, text):
+    return head_tail(tok(text[:TASK_CHARS])["input_ids"])
 
 
 def request_text(state):
@@ -67,8 +76,7 @@ def load_scorer(model_dir, dev=None):
 
     def score(text):
         with lock, torch.no_grad():
-            x = tok(text, truncation=True, max_length=MAX_LEN, return_tensors="pt").to(dev)
-            lg = m(**x).logits[0].float().cpu()
+            lg = m(input_ids=torch.tensor([encode(tok, text)], device=dev)).logits[0].float().cpu()
             h = hid["h"][0].float()
             emb = torch.cat([h[0], h.mean(0)]).cpu().numpy()
         return p_solve(hardness(lg.numpy(), calib, emb), calib)

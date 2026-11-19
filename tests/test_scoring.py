@@ -1,6 +1,6 @@
 import numpy as np
 
-from switchyard_decider.serve import TASK_CHARS, hardness, p_solve, request_text
+from switchyard_decider.serve import MAX_LEN, TASK_CHARS, encode, hardness, head_tail, p_solve, request_text
 
 rng = np.random.default_rng(0)
 VAL = rng.normal(size=(500, 7)).astype(np.float32)
@@ -57,8 +57,32 @@ def test_request_text():
 
 
 def test_request_text_truncates_opening_task_only():
-    t = request_text({"opening_task": "a" * 5000, "latest_follow_up": "b" * 5000})
+    t = request_text({"opening_task": "a" * (TASK_CHARS + 5000), "latest_follow_up": "b" * 5000})
     assert t == "a" * TASK_CHARS + "\n\n" + "b" * 5000
+
+
+def test_head_tail_keeps_first_and_last_halves():
+    ids = list(range(2000))
+    cut = head_tail(ids)
+    assert MAX_LEN == 768 and len(cut) == 768
+    assert cut[:384] == ids[:384] and cut[384:] == ids[-384:]
+
+
+def test_head_tail_short_unchanged():
+    for n in (0, 1, 767, 768):
+        assert head_tail(list(range(n))) == list(range(n))
+
+
+def test_encode_cuts_chars_then_tokens():
+    seen = []
+
+    def tok(text):
+        seen.append(len(text))
+        return {"input_ids": [ord(ch) for ch in text]}
+
+    ids = encode(tok, "a" * 384 + "x" * (TASK_CHARS * 2) + "z" * 384)
+    assert seen == [TASK_CHARS] and len(ids) == 768
+    assert ids[:384] == [ord("a")] * 384 and ids[384:] == [ord("x")] * 384
 
 
 def test_ridge_probe_blend():

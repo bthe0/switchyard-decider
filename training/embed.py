@@ -1,5 +1,6 @@
 import json, sys, numpy as np, torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from switchyard_decider.serve import encode
 # embed.py <model_dir>: CLS+mean last-layer embeddings for val.jsonl and a 30k train3.jsonl sample, input to fit_head.py.
 d = sys.argv[1]
 tok = AutoTokenizer.from_pretrained(d)
@@ -8,8 +9,7 @@ def emb(texts):
     out = []
     with torch.no_grad():
         for t in texts:
-            x = tok(t, truncation=True, max_length=768, return_tensors="pt").to("mps")
-            h = m.model(**x).last_hidden_state[0].float()
+            h = m.model(input_ids=torch.tensor([encode(tok, t)], device="mps")).last_hidden_state[0].float()
             out.append(torch.cat([h[0], h.mean(0)]).cpu().numpy())
     return np.array(out, dtype=np.float32)
 va = [json.loads(l) for l in open("val.jsonl")]
