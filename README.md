@@ -38,8 +38,13 @@ Validation set: 1,994 held-out prompts (easy vs hard pairs; medium excluded from
 | this model (step 3600, head only, v1.0) | 0.886 | 0.769 | 0.929 | 0.693 | 0.862 |
 | previous LLM decider (0.8B, MLX 4-bit) | 0.687 | | | 0.538 | 0.712 |
 
+On a 120-prompt easy/hard sample, it reaches AUC 0.925 (95% CI 0.877-0.964) in 26 ms p50 locally with $0 API cost.
+The best OpenRouter decision model measured for latency (drex-max-finance) reaches 0.917 in 494 ms at $18 per 1M
+decisions. The best zero-shot chat LLM (gemini-3.1-flash-lite) reaches 0.841 in 1,226 ms at $262 per 1M decisions.
+
 The checkpoint was chosen on this validation set, so these numbers are slightly optimistic. Full tables, the
-comparison with about 40 OpenRouter decision models and latency figures are in [docs/benchmarks.md](docs/benchmarks.md).
+comparison with about 40 OpenRouter decision models and 10 chat LLMs, a Pareto chart and latency figures are in
+[docs/benchmarks.md](docs/benchmarks.md#comparison-with-openrouter-models).
 
 ## Quickstart
 
@@ -77,7 +82,7 @@ docs/                 architecture, serving, training, benchmarks, data, model c
 - [Architecture](docs/architecture.md): model, heads, hardness scoring and calibration
 - [Serving](docs/serving.md): install, run, HTTP API, running as a service
 - [Training](docs/training.md): pipeline order, script inputs and outputs, hardware
-- [Benchmarks](docs/benchmarks.md): accuracy, teacher comparison, speed
+- [Benchmarks](docs/benchmarks.md): accuracy, teacher comparison, speed, OpenRouter comparison
 - [Data](docs/data.md): sources, licenses and labelling
 - [Model card](docs/MODEL_CARD.md): the Hugging Face model card
 

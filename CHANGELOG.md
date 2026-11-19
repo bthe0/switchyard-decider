@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `benchmarks/bench_llm.py`: compares the served model with zero-shot OpenRouter chat LLMs and OpenRouter decision
+  models on the same validation sample. Reports AUC with bootstrap CI, routing accuracy, latency, tokens and cost
+  per decision, and has a spend cap. Results are in `benchmarks/results/openrouter_compare.json`, the chart is
+  `docs/pareto.png`, and the write-up is in docs/benchmarks.md.
+
 ## [1.1.0] - 2026-11-19
 
 ### Added

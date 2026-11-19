@@ -1,7 +1,7 @@
 import json, os, sys, random, time, urllib.request, concurrent.futures as cf
 import numpy as np
 
-H = {"Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"], "Content-Type": "application/json"}
+H = {"Authorization": "Bearer " + os.environ.get("OPENROUTER_API_KEY", ""), "Content-Type": "application/json"}
 CAP, N = float(os.environ.get("CAP", "inf")), int(os.environ.get("N", 300))
 Q = {"solve": {"type": "noul", "instructions": (
     "Can a solid mid-tier coding assistant complete this request fully and correctly on its own, without needing a "
